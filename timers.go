@@ -5,10 +5,9 @@ import (
 	"time"
 )
 
-type TimerInfo struct {
-	Key       string
-	Duration  time.Duration
-	OtherInfo map[string]interface{}
+type TimerInfo interface {
+	Key() string
+	Duration() time.Duration
 }
 
 type timer struct {
@@ -29,7 +28,7 @@ func (t *timer) AddTimeout(info TimerInfo) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
-	t.timeouts[info.Key] = info
+	t.timeouts[info.Key()] = info
 }
 
 func (t *timer) FireTimeout(key string) {
@@ -54,8 +53,8 @@ func (c *ClientController) StartTimer(i TimerInfo) {
 	c.timer.AddTimeout(i)
 
 	tMsg := &timeout{
-		Type:     i.Key,
-		Duration: int(i.Duration.Milliseconds()),
+		Type:     i.Key(),
+		Duration: int(i.Duration().Milliseconds()),
 		Peer:     c.peerID,
 	}
 	c.sendMasterMessage(&masterRequest{
