@@ -51,12 +51,10 @@ func (c *ClientController) handleDirective(w http.ResponseWriter, r *http.Reques
 		c.pause()
 		err = c.directiveHandler.Restart()
 		c.resume()
-		break
 	case IsReadyAction:
 		if !c.IsReady() {
-			err = errors.New("Replica not ready")
+			err = errors.New("replica not ready")
 		}
-		break
 	}
 
 	if err != nil {
@@ -64,5 +62,26 @@ func (c *ClientController) handleDirective(w http.ResponseWriter, r *http.Reques
 		fmt.Fprintf(w, "Not Ok!")
 		return
 	}
+	fmt.Fprintf(w, "Ok")
+}
+
+func (c *ClientController) handleTimeout(w http.ResponseWriter, r *http.Request) {
+	bodyB, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Not OK!")
+		return
+	}
+	defer r.Body.Close()
+
+	t := &timeout{}
+	err = json.Unmarshal(bodyB, t)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Not OK!")
+		return
+	}
+
+	c.timer.FireTimeout(t.Type)
 	fmt.Fprintf(w, "Ok")
 }

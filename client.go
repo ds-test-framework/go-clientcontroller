@@ -13,11 +13,12 @@ import (
 type PeerID string
 
 type Message struct {
-	To        PeerID
-	From      PeerID
-	Msg       string
-	ID        string
-	Intercept bool
+	Type      string `json:"type"`
+	To        PeerID `json:"to"`
+	From      PeerID `json:"from"`
+	Msg       string `json:"msg"`
+	ID        string `json:"id"`
+	Intercept bool   `json:"intercept"`
 }
 
 type ClientController struct {
@@ -36,6 +37,8 @@ type ClientController struct {
 	intercepting     bool
 	interceptingLock *sync.Mutex
 
+	timer *timer
+
 	ready     bool
 	readyLock *sync.Mutex
 }
@@ -53,6 +56,8 @@ func NewClientController(peerID PeerID, masterAddr, listenAddr string, peerInfo 
 		stopCh:           make(chan bool),
 		directiveHandler: directiveHandler,
 
+		timer: newTimer(),
+
 		intercepting:     true,
 		interceptingLock: new(sync.Mutex),
 	}
@@ -60,6 +65,7 @@ func NewClientController(peerID PeerID, masterAddr, listenAddr string, peerInfo 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/message", c.handleMessage)
 	mux.HandleFunc("/directive", c.handleDirective)
+	mux.HandleFunc("/timeout", c.handleTimeout)
 
 	c.server = &http.Server{
 		Addr:    listenAddr,
@@ -74,16 +80,34 @@ func (c *ClientController) OutChan() chan *Message {
 
 func (c *ClientController) SetReady() {
 	c.readyLock.Lock()
-	defer c.readyLock.Unlock()
-
 	c.ready = true
+	c.readyLock.Unlock()
+
+	go c.sendMasterMessage(&masterRequest{
+		Type: "RegisterPeer",
+		Peer: &peer{
+			ID:    c.peerID,
+			Info:  c.peerInfo,
+			Addr:  c.listenAddr,
+			Ready: true,
+		},
+	})
 }
 
 func (c *ClientController) UnsetReady() {
 	c.readyLock.Lock()
-	defer c.readyLock.Unlock()
-
 	c.ready = false
+	c.readyLock.Unlock()
+
+	go c.sendMasterMessage(&masterRequest{
+		Type: "RegisterPeer",
+		Peer: &peer{
+			ID:    c.peerID,
+			Info:  c.peerInfo,
+			Addr:  c.listenAddr,
+			Ready: false,
+		},
+	})
 }
 
 func (c *ClientController) IsReady() bool {
@@ -97,7 +121,7 @@ func (c *ClientController) SendMessage(to PeerID, msg string, intercept bool) er
 
 	select {
 	case <-c.stopCh:
-		return errors.New("Controller stopped! EOF")
+		return errors.New("controller stopped. EOF")
 	default:
 	}
 
@@ -120,9 +144,12 @@ func (c *ClientController) Start() error {
 
 	c.sendMasterMessage(&masterRequest{
 		Type: "RegisterPeer",
-		Peer: c.peerID,
-		Addr: c.listenAddr,
-		Info: c.peerInfo,
+		Peer: &peer{
+			ID:    c.peerID,
+			Info:  c.peerInfo,
+			Addr:  c.listenAddr,
+			Ready: false,
+		},
 	})
 
 	go func() {
@@ -159,7 +186,6 @@ func (c *ClientController) poll() {
 		case msg := <-c.fromNode:
 			go c.sendMasterMessage(&masterRequest{
 				Type:    "InterceptedMessage",
-				Peer:    c.peerID,
 				Message: msg,
 			})
 		case <-c.stopCh:
@@ -168,12 +194,18 @@ func (c *ClientController) poll() {
 	}
 }
 
+type peer struct {
+	ID    PeerID                 `json:"id"`
+	Addr  string                 `json:"addr"`
+	Info  map[string]interface{} `json:"info,omitempty"`
+	Ready bool                   `json:"ready"`
+}
+
 type masterRequest struct {
-	Type    string                 `json:"type"`
-	Peer    PeerID                 `json:"peer"`
-	Message *Message               `json:"message,omitempty"`
-	Addr    string                 `json:"addr,omitempty"`
-	Info    map[string]interface{} `json:"info,omitempty"`
+	Type    string   `json:"type"`
+	Peer    *peer    `json:"peer,omitempty"`
+	Message *Message `json:"message,omitempty"`
+	Timeout *timeout `json:"timeout,omitempty"`
 }
 
 func (c *ClientController) sendMasterMessage(msg *masterRequest) error {
@@ -195,7 +227,7 @@ func (c *ClientController) sendMasterMessage(msg *masterRequest) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return errors.New("Response was not ok!")
+		return errors.New("response was not ok	")
 	}
 	return nil
 }
