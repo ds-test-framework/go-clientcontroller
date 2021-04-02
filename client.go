@@ -1,4 +1,4 @@
-package godriver
+package clientcontroller
 
 import (
 	"bytes"
@@ -9,6 +9,21 @@ import (
 	"sync"
 	"time"
 )
+
+var c *ClientController = nil
+
+// Init initialized the global controller
+func Init(peer PeerID, masterAddr, listenAddr string, peerInfo map[string]interface{}, d DirectiveHandler) {
+	c = NewClientController(peer, masterAddr, listenAddr, peerInfo, d)
+}
+
+// GetController returns the global controller if initialized
+func GetController() (*ClientController, error) {
+	if c == nil {
+		return nil, errors.New("controller not initialized")
+	}
+	return c, nil
+}
 
 // PeerID identifier for a given Peer
 type PeerID string
@@ -50,6 +65,9 @@ type ClientController struct {
 
 	ready     bool
 	readyLock *sync.Mutex
+
+	started     bool
+	startedLock *sync.Mutex
 }
 
 // NewClientController creates a ClientController
@@ -71,6 +89,9 @@ func NewClientController(peerID PeerID, masterAddr, listenAddr string, peerInfo 
 
 		intercepting:     true,
 		interceptingLock: new(sync.Mutex),
+
+		started:     false,
+		startedLock: new(sync.Mutex),
 	}
 
 	mux := http.NewServeMux()
@@ -83,6 +104,13 @@ func NewClientController(peerID PeerID, masterAddr, listenAddr string, peerInfo 
 		Handler: mux,
 	}
 	return c
+}
+
+// Running returns true if the clientcontroller is running
+func (c *ClientController) Running() bool {
+	c.startedLock.Lock()
+	defer c.startedLock.Unlock()
+	return c.started
 }
 
 // OutChan returns a channel which contains incoming messages for this replica/peer
@@ -182,6 +210,9 @@ func (c *ClientController) Start() error {
 	case e := <-errCh:
 		return e
 	case <-time.After(1 * time.Second):
+		c.startedLock.Lock()
+		c.started = true
+		c.startedLock.Unlock()
 		return nil
 	}
 }
@@ -194,6 +225,9 @@ func (c *ClientController) Stop() error {
 	}()
 
 	close(c.stopCh)
+	c.startedLock.Lock()
+	c.started = false
+	c.startedLock.Unlock()
 	if err := c.server.Shutdown(ctx); err != nil {
 		return err
 	}

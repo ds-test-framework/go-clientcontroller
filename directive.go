@@ -1,4 +1,4 @@
-package godriver
+package clientcontroller
 
 const (
 	// Directive action to start the replica
