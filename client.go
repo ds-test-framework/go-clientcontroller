@@ -10,8 +10,10 @@ import (
 	"time"
 )
 
+// PeerID identifier for a given Peer
 type PeerID string
 
+// Message that is to be sent between the replicas
 type Message struct {
 	Type      string `json:"type"`
 	To        PeerID `json:"to"`
@@ -21,6 +23,13 @@ type Message struct {
 	Intercept bool   `json:"intercept"`
 }
 
+// ClientController should be used as a transport to send messages between peers.
+// It encapsulates the logic of sending the message to the `masternode` for further processing
+// The ClientController also listens for incoming messages from the master and directives to start, restart and stop
+// the current peer/replica.
+//
+// Additionally, the ClientController also exposes functions to manage timers. This is key to our testing method.
+// Timers are implemented as message sends and receives and again this is encapsulated from the library user
 type ClientController struct {
 	directiveHandler DirectiveHandler
 	peerID           PeerID
@@ -43,6 +52,8 @@ type ClientController struct {
 	readyLock *sync.Mutex
 }
 
+// NewClientController creates a ClientController
+// It requires a DirectiveHandler which is used to perform directive actions such as start, stop and restart
 func NewClientController(peerID PeerID, masterAddr, listenAddr string, peerInfo map[string]interface{}, directiveHandler DirectiveHandler) *ClientController {
 	c := &ClientController{
 		peerID:           peerID,
@@ -74,10 +85,12 @@ func NewClientController(peerID PeerID, masterAddr, listenAddr string, peerInfo 
 	return c
 }
 
+// OutChan returns a channel which contains incoming messages for this replica/peer
 func (c *ClientController) OutChan() chan *Message {
 	return c.toNode
 }
 
+// SetReady sets the state of the replica to ready for testing
 func (c *ClientController) SetReady() {
 	c.readyLock.Lock()
 	c.ready = true
@@ -94,6 +107,7 @@ func (c *ClientController) SetReady() {
 	})
 }
 
+// UnsetReady sets the state of the replica to not ready for testing
 func (c *ClientController) UnsetReady() {
 	c.readyLock.Lock()
 	c.ready = false
@@ -110,6 +124,7 @@ func (c *ClientController) UnsetReady() {
 	})
 }
 
+// IsReady returns true if the state is set to ready
 func (c *ClientController) IsReady() bool {
 	c.readyLock.Lock()
 	defer c.readyLock.Unlock()
@@ -117,6 +132,8 @@ func (c *ClientController) IsReady() bool {
 	return c.ready
 }
 
+// SendMessage is to be used to send a message to another replica
+// and can be marked as to be intercepted or not by the testing framework
 func (c *ClientController) SendMessage(to PeerID, msg string, intercept bool) error {
 
 	select {
@@ -139,6 +156,8 @@ func (c *ClientController) SendMessage(to PeerID, msg string, intercept bool) er
 	return nil
 }
 
+// Start will start the ClientController by spawning the polling goroutines and the server
+// Start should be called before SetReady/UnsetReady
 func (c *ClientController) Start() error {
 	errCh := make(chan error, 1)
 
@@ -167,6 +186,7 @@ func (c *ClientController) Start() error {
 	}
 }
 
+// Stop will halt the clientcontroller and gracefully exit
 func (c *ClientController) Stop() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer func() {

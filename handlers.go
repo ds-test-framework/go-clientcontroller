@@ -35,7 +35,7 @@ func (c *ClientController) handleDirective(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	defer r.Body.Close()
-	req := &DirectiveMessage{}
+	req := &directiveMessage{}
 	err = json.Unmarshal(bodyB, req)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -43,15 +43,15 @@ func (c *ClientController) handleDirective(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	switch req.Action {
-	case StartAction:
+	case startAction:
 		break
-	case StopAction:
+	case stopAction:
 		break
-	case RestartAction:
+	case restartAction:
 		c.pause()
 		err = c.directiveHandler.Restart()
 		c.resume()
-	case IsReadyAction:
+	case isReadyAction:
 		if !c.IsReady() {
 			err = errors.New("replica not ready")
 		}
