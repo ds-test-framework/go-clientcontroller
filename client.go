@@ -57,17 +57,13 @@ type ClientController struct {
 	resetting        bool
 	resettingLock    *sync.Mutex
 	stopCh           chan bool
-
 	intercepting     bool
 	interceptingLock *sync.Mutex
-
-	timer *timer
-
-	ready     bool
-	readyLock *sync.Mutex
-
-	started     bool
-	startedLock *sync.Mutex
+	timer            *timer
+	ready            bool
+	readyLock        *sync.Mutex
+	started          bool
+	startedLock      *sync.Mutex
 }
 
 // NewClientController creates a ClientController
@@ -84,14 +80,13 @@ func NewClientController(peerID PeerID, masterAddr, listenAddr string, peerInfo 
 		resettingLock:    new(sync.Mutex),
 		stopCh:           make(chan bool),
 		directiveHandler: directiveHandler,
-
-		timer: newTimer(),
-
+		timer:            newTimer(),
 		intercepting:     true,
 		interceptingLock: new(sync.Mutex),
-
-		started:     false,
-		startedLock: new(sync.Mutex),
+		started:          false,
+		startedLock:      new(sync.Mutex),
+		ready:            false,
+		readyLock:        new(sync.Mutex),
 	}
 
 	mux := http.NewServeMux()
@@ -187,6 +182,9 @@ func (c *ClientController) SendMessage(to PeerID, msg string, intercept bool) er
 // Start will start the ClientController by spawning the polling goroutines and the server
 // Start should be called before SetReady/UnsetReady
 func (c *ClientController) Start() error {
+	if c.Running() {
+		return nil
+	}
 	errCh := make(chan error, 1)
 
 	c.sendMasterMessage(&masterRequest{
@@ -219,6 +217,9 @@ func (c *ClientController) Start() error {
 
 // Stop will halt the clientcontroller and gracefully exit
 func (c *ClientController) Stop() error {
+	if !c.Running() {
+		return nil
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer func() {
 		cancel()
