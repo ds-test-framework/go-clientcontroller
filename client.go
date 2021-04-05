@@ -83,6 +83,9 @@ func NewClientController(
 	directiveHandler DirectiveHandler,
 	logger Logger,
 ) *ClientController {
+	if logger == nil {
+		logger = newDefaultLogger()
+	}
 	c := &ClientController{
 		peerID:           peerID,
 		masterAddr:       masterAddr,

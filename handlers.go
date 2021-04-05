@@ -42,6 +42,7 @@ func (c *ClientController) handleDirective(w http.ResponseWriter, r *http.Reques
 		fmt.Fprintf(w, "Not OK!")
 		return
 	}
+	c.logger.Info("Received directive", "directive", req.Action)
 	switch req.Action {
 	case startAction:
 		c.resume()
@@ -60,6 +61,7 @@ func (c *ClientController) handleDirective(w http.ResponseWriter, r *http.Reques
 	}
 
 	if err != nil {
+		c.logger.Info("Error handling directive", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "Not Ok!")
 		return

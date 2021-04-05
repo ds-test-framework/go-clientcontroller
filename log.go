@@ -11,6 +11,7 @@ var (
 	msgKey = "_msg"
 )
 
+// Logger interface for logging information
 type Logger interface {
 	Debug(msg string, keyvals ...interface{})
 	Info(msg string, keyvals ...interface{})
