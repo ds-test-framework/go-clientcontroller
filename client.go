@@ -13,8 +13,14 @@ import (
 var c *ClientController = nil
 
 // Init initialized the global controller
-func Init(peer PeerID, masterAddr, listenAddr string, peerInfo map[string]interface{}, d DirectiveHandler) {
-	c = NewClientController(peer, masterAddr, listenAddr, peerInfo, d)
+func Init(
+	peer PeerID,
+	masterAddr, listenAddr string,
+	peerInfo map[string]interface{},
+	d DirectiveHandler,
+	logger Logger,
+) {
+	c = NewClientController(peer, masterAddr, listenAddr, peerInfo, d, logger)
 }
 
 // GetController returns the global controller if initialized
@@ -64,11 +70,19 @@ type ClientController struct {
 	readyLock        *sync.Mutex
 	started          bool
 	startedLock      *sync.Mutex
+
+	logger Logger
 }
 
 // NewClientController creates a ClientController
 // It requires a DirectiveHandler which is used to perform directive actions such as start, stop and restart
-func NewClientController(peerID PeerID, masterAddr, listenAddr string, peerInfo map[string]interface{}, directiveHandler DirectiveHandler) *ClientController {
+func NewClientController(
+	peerID PeerID,
+	masterAddr, listenAddr string,
+	peerInfo map[string]interface{},
+	directiveHandler DirectiveHandler,
+	logger Logger,
+) *ClientController {
 	c := &ClientController{
 		peerID:           peerID,
 		masterAddr:       masterAddr,
@@ -87,6 +101,7 @@ func NewClientController(peerID PeerID, masterAddr, listenAddr string, peerInfo 
 		startedLock:      new(sync.Mutex),
 		ready:            false,
 		readyLock:        new(sync.Mutex),
+		logger:           logger,
 	}
 
 	mux := http.NewServeMux()
