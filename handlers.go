@@ -44,9 +44,11 @@ func (c *ClientController) handleDirective(w http.ResponseWriter, r *http.Reques
 	}
 	switch req.Action {
 	case startAction:
-		break
+		c.resume()
+		err = c.directiveHandler.Start()
 	case stopAction:
-		break
+		c.pause()
+		err = c.directiveHandler.Stop()
 	case restartAction:
 		c.pause()
 		err = c.directiveHandler.Restart()
@@ -84,4 +86,29 @@ func (c *ClientController) handleTimeout(w http.ResponseWriter, r *http.Request)
 
 	c.timer.FireTimeout(t.Type)
 	fmt.Fprintf(w, "Ok")
+}
+
+type httpHandler func(http.ResponseWriter, *http.Request)
+
+type httpErrorHandler func(http.ResponseWriter, *http.Request) error
+
+func wrapHandler(handler httpHandler, validators ...httpErrorHandler) httpHandler {
+	return func(w http.ResponseWriter, r *http.Request) {
+		for _, v := range validators {
+			if err := v(w, r); err != nil {
+				return
+			}
+		}
+		handler(w, r)
+	}
+}
+
+func postRequest(w http.ResponseWriter, r *http.Request) error {
+	if r.Method != http.MethodPost {
+		errS := fmt.Sprintf("method not allowed: %s", r.Method)
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		fmt.Fprint(w, errS)
+		return errors.New(errS)
+	}
+	return nil
 }

@@ -90,9 +90,15 @@ func NewClientController(peerID PeerID, masterAddr, listenAddr string, peerInfo 
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/message", c.handleMessage)
-	mux.HandleFunc("/directive", c.handleDirective)
-	mux.HandleFunc("/timeout", c.handleTimeout)
+	mux.HandleFunc("/message",
+		wrapHandler(c.handleMessage, postRequest),
+	)
+	mux.HandleFunc("/directive",
+		wrapHandler(c.handleDirective, postRequest),
+	)
+	mux.HandleFunc("/timeout",
+		wrapHandler(c.handleTimeout, postRequest),
+	)
 
 	c.server = &http.Server{
 		Addr:    listenAddr,
