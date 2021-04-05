@@ -207,7 +207,7 @@ func (c *ClientController) Start() error {
 		return nil
 	}
 	errCh := make(chan error, 1)
-
+	c.logger.Info("Starting client controller", "addr", c.listenAddr)
 	c.sendMasterMessage(&masterRequest{
 		Type: "RegisterPeer",
 		Peer: &peer{
@@ -245,7 +245,7 @@ func (c *ClientController) Stop() error {
 	defer func() {
 		cancel()
 	}()
-
+	c.logger.Info("Stopping client controller")
 	close(c.stopCh)
 	c.startedLock.Lock()
 	c.started = false
