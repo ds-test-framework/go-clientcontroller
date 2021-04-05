@@ -15,8 +15,6 @@ type Logger interface {
 	Debug(msg string, keyvals ...interface{})
 	Info(msg string, keyvals ...interface{})
 	Error(msg string, keyvals ...interface{})
-
-	With(keyvals ...interface{}) Logger
 }
 
 type defaultLogger struct {
@@ -40,9 +38,4 @@ func (d *defaultLogger) Debug(msg string, keyvals ...interface{}) {
 func (d *defaultLogger) Error(msg string, keyvals ...interface{}) {
 	lWithLevel := kitlevel.Error(d.logger)
 	kitlog.With(lWithLevel, msgKey, msg).Log(keyvals...)
-}
-func (d *defaultLogger) With(keyvals ...interface{}) Logger {
-	return &defaultLogger{
-		logger: kitlog.With(d.logger, keyvals),
-	}
 }
