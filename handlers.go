@@ -8,6 +8,10 @@ import (
 	"net/http"
 )
 
+func (c *ClientController) handleHealth(w http.ResponseWriter, _ *http.Request) {
+	fmt.Fprintf(w, "Ok!")
+}
+
 func (c *ClientController) handleMessage(w http.ResponseWriter, r *http.Request) {
 	bodyB, err := ioutil.ReadAll(r.Body)
 	if err != nil {

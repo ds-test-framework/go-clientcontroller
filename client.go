@@ -117,6 +117,7 @@ func NewClientController(
 	mux.HandleFunc("/timeout",
 		wrapHandler(c.handleTimeout, postRequest),
 	)
+	mux.HandleFunc("/health", c.handleHealth)
 
 	c.server = &http.Server{
 		Addr:    listenAddr,
