@@ -15,12 +15,12 @@ var c *ClientController = nil
 // Init initialized the global controller
 func Init(
 	peer PeerID,
-	masterAddr, listenAddr string,
+	masterAddr, listenAddr, externAddr string,
 	peerInfo map[string]interface{},
 	d DirectiveHandler,
 	logger Logger,
 ) {
-	c = NewClientController(peer, masterAddr, listenAddr, peerInfo, d, logger)
+	c = NewClientController(peer, masterAddr, listenAddr, externAddr, peerInfo, d, logger)
 }
 
 // GetController returns the global controller if initialized
@@ -56,6 +56,7 @@ type ClientController struct {
 	peerID           PeerID
 	masterAddr       string
 	listenAddr       string
+	externAddr       string
 	peerInfo         map[string]interface{}
 	server           *http.Server
 	fromNode         chan *Message
@@ -78,7 +79,7 @@ type ClientController struct {
 // It requires a DirectiveHandler which is used to perform directive actions such as start, stop and restart
 func NewClientController(
 	peerID PeerID,
-	masterAddr, listenAddr string,
+	masterAddr, listenAddr, externAddr string,
 	peerInfo map[string]interface{},
 	directiveHandler DirectiveHandler,
 	logger Logger,
@@ -86,10 +87,14 @@ func NewClientController(
 	if logger == nil {
 		logger = newDefaultLogger()
 	}
+	if externAddr == "" {
+		externAddr = listenAddr
+	}
 	c := &ClientController{
 		peerID:           peerID,
 		masterAddr:       masterAddr,
 		listenAddr:       listenAddr,
+		externAddr:       externAddr,
 		peerInfo:         peerInfo,
 		fromNode:         make(chan *Message, 10),
 		toNode:           make(chan *Message, 10),
@@ -149,7 +154,7 @@ func (c *ClientController) SetReady() {
 		Peer: &peer{
 			ID:    c.peerID,
 			Info:  c.peerInfo,
-			Addr:  c.listenAddr,
+			Addr:  c.externAddr,
 			Ready: true,
 		},
 	})
@@ -166,7 +171,7 @@ func (c *ClientController) UnsetReady() {
 		Peer: &peer{
 			ID:    c.peerID,
 			Info:  c.peerInfo,
-			Addr:  c.listenAddr,
+			Addr:  c.externAddr,
 			Ready: false,
 		},
 	})
@@ -217,7 +222,7 @@ func (c *ClientController) Start() error {
 		Peer: &peer{
 			ID:    c.peerID,
 			Info:  c.peerInfo,
-			Addr:  c.listenAddr,
+			Addr:  c.externAddr,
 			Ready: false,
 		},
 	})
