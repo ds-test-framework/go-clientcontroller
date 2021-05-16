@@ -39,7 +39,7 @@ type Message struct {
 	Type      string `json:"type"`
 	To        PeerID `json:"to"`
 	From      PeerID `json:"from"`
-	Msg       string `json:"msg"`
+	Msg       []byte `json:"msg"`
 	ID        string `json:"id"`
 	Intercept bool   `json:"intercept"`
 }
@@ -54,23 +54,30 @@ type Message struct {
 type ClientController struct {
 	directiveHandler DirectiveHandler
 	peerID           PeerID
-	masterAddr       string
-	listenAddr       string
-	externAddr       string
-	peerInfo         map[string]interface{}
-	server           *http.Server
-	fromNode         chan *Message
-	toNode           chan *Message
-	resetting        bool
-	resettingLock    *sync.Mutex
-	stopCh           chan bool
+
+	masterAddr string
+	listenAddr string
+	externAddr string
+	peerInfo   map[string]interface{}
+
+	server *http.Server
+
+	fromNode chan *Message
+	toNode   chan *Message
+
+	resetting     bool
+	resettingLock *sync.Mutex
+	stopCh        chan bool
+
 	intercepting     bool
 	interceptingLock *sync.Mutex
-	timer            *timer
-	ready            bool
-	readyLock        *sync.Mutex
-	started          bool
-	startedLock      *sync.Mutex
+
+	timer *timer
+
+	ready       bool
+	readyLock   *sync.Mutex
+	started     bool
+	startedLock *sync.Mutex
 
 	logger Logger
 }
@@ -187,7 +194,7 @@ func (c *ClientController) IsReady() bool {
 
 // SendMessage is to be used to send a message to another replica
 // and can be marked as to be intercepted or not by the testing framework
-func (c *ClientController) SendMessage(to PeerID, msg string, intercept bool) error {
+func (c *ClientController) SendMessage(t string, to PeerID, msg []byte, intercept bool) error {
 
 	select {
 	case <-c.stopCh:
@@ -200,6 +207,7 @@ func (c *ClientController) SendMessage(to PeerID, msg string, intercept bool) er
 	}
 
 	c.fromNode <- &Message{
+		Type:      t,
 		From:      c.peerID,
 		To:        to,
 		ID:        "",
@@ -286,20 +294,45 @@ type peer struct {
 	Ready bool                   `json:"ready"`
 }
 
+type state struct {
+	State string `json:"state"`
+}
+
 type masterRequest struct {
 	Type    string   `json:"type"`
 	Peer    *peer    `json:"peer,omitempty"`
 	Message *Message `json:"message,omitempty"`
 	Timeout *timeout `json:"timeout,omitempty"`
+	State   *state   `json:"state,omitempty"`
+	Log     *Log     `json:"log,omitempty"`
 }
 
 func (c *ClientController) sendMasterMessage(msg *masterRequest) error {
-	b, err := json.Marshal(msg)
+	var b []byte
+	var route string
+	var err error
+	switch msg.Type {
+	case "RegisterPeer":
+		b, err = json.Marshal(msg.Peer)
+		route = "/replica"
+	case "InterceptedMessage":
+		b, err = json.Marshal(msg.Message)
+		route = "/message"
+	case "TimeoutMessage":
+		b, err = json.Marshal(msg.Timeout)
+		route = "/timeout"
+	case "StateUpdate":
+		b, err = json.Marshal(msg.State)
+		route = "/state"
+	case "Log":
+		b, err = json.Marshal(msg.Log)
+		route = "/log"
+	}
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, "http://"+c.masterAddr, bytes.NewBuffer(b))
+	req, err := http.NewRequest(http.MethodPost, "http://"+c.masterAddr+route, bytes.NewBuffer(b))
 	if err != nil {
 		return err
 	}
