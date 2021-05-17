@@ -295,6 +295,7 @@ type peer struct {
 }
 
 type state struct {
+	ID    PeerID `json:"id"`
 	State string `json:"state"`
 }
 

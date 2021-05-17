@@ -15,6 +15,7 @@ func (c *ClientController) UpdateState(s State) error {
 	return c.sendMasterMessage(&masterRequest{
 		Type: "StateUpdate",
 		State: &state{
+			ID:    c.peerID,
 			State: stateS,
 		},
 	})
@@ -25,16 +26,20 @@ func (c *ClientController) UpdateStateAsync(s State) {
 }
 
 type Log struct {
+	ID     PeerID                 `json:"id"`
 	Params map[string]interface{} `json:"params"`
 }
 
-func (c *ClientController) Log(l *Log) {
+func (c *ClientController) Log(params map[string]interface{}) {
 	c.sendMasterMessage(&masterRequest{
 		Type: "Log",
-		Log:  l,
+		Log: &Log{
+			ID:     c.peerID,
+			Params: params,
+		},
 	})
 }
 
-func (c *ClientController) LogAsync(l *Log) {
-	go c.Log(l)
+func (c *ClientController) LogAsync(params map[string]interface{}) {
+	go c.Log(params)
 }
