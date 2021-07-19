@@ -294,17 +294,12 @@ type peer struct {
 	Ready bool                   `json:"ready"`
 }
 
-type state struct {
-	ID    PeerID `json:"id"`
-	State string `json:"state"`
-}
-
 type masterRequest struct {
 	Type    string   `json:"type"`
 	Peer    *peer    `json:"peer,omitempty"`
 	Message *Message `json:"message,omitempty"`
 	Timeout *timeout `json:"timeout,omitempty"`
-	State   *state   `json:"state,omitempty"`
+	Event   *event   `json:"event,omitempty"`
 	Log     *Log     `json:"log,omitempty"`
 }
 
@@ -323,7 +318,7 @@ func (c *ClientController) sendMasterMessage(msg *masterRequest) error {
 		b, err = json.Marshal(msg.Timeout)
 		route = "/timeout"
 	case "StateUpdate":
-		b, err = json.Marshal(msg.State)
+		b, err = json.Marshal(msg.Event)
 		route = "/state"
 	case "Log":
 		b, err = json.Marshal(msg.Log)

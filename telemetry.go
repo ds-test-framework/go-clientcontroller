@@ -1,28 +1,27 @@
 package clientcontroller
 
-import "errors"
+import "time"
 
-type State interface {
-	Marshal() (string, error)
+type event struct {
+	Type      string            `json:"type"`
+	Replica   PeerID            `json:"replica"`
+	Params    map[string]string `json:"params"`
+	Timestamp int64             `json:"timestamp"`
 }
 
-func (c *ClientController) UpdateState(s State) error {
-	stateS, err := s.Marshal()
-	if err != nil {
-		return errors.New("failed to marshal state")
-	}
-
-	return c.sendMasterMessage(&masterRequest{
-		Type: "StateUpdate",
-		State: &state{
-			ID:    c.peerID,
-			State: stateS,
+func (c *ClientController) PublishEvent(t string, params map[string]string) {
+	c.sendMasterMessage(&masterRequest{
+		Type: "Event",
+		Event: &event{
+			Type:      t,
+			Replica:   c.peerID,
+			Params:    params,
+			Timestamp: time.Now().Unix(),
 		},
 	})
 }
-
-func (c *ClientController) UpdateStateAsync(s State) {
-	go c.UpdateState(s)
+func (c *ClientController) PublishEventAsync(t string, params map[string]string) {
+	go c.PublishEvent(t, params)
 }
 
 type Log struct {

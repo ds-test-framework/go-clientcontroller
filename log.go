@@ -1,12 +1,5 @@
 package clientcontroller
 
-import (
-	"os"
-
-	kitlog "github.com/go-kit/kit/log"
-	kitlevel "github.com/go-kit/kit/log/level"
-)
-
 var (
 	msgKey = "_msg"
 )
@@ -18,25 +11,16 @@ type Logger interface {
 	Error(msg string, keyvals ...interface{})
 }
 
-type defaultLogger struct {
-	logger kitlog.Logger
+type silentLogger struct {
 }
 
 func newDefaultLogger() Logger {
-	return &defaultLogger{
-		logger: kitlog.NewLogfmtLogger(kitlog.NewSyncWriter(os.Stdout)),
-	}
+	return &silentLogger{}
 }
 
-func (d *defaultLogger) Info(msg string, keyvals ...interface{}) {
-	lWithLevel := kitlevel.Info(d.logger)
-	kitlog.With(lWithLevel, msgKey, msg).Log(keyvals...)
+func (d *silentLogger) Info(msg string, keyvals ...interface{}) {
 }
-func (d *defaultLogger) Debug(msg string, keyvals ...interface{}) {
-	lWithLevel := kitlevel.Debug(d.logger)
-	kitlog.With(lWithLevel, msgKey, msg).Log(keyvals...)
+func (d *silentLogger) Debug(msg string, keyvals ...interface{}) {
 }
-func (d *defaultLogger) Error(msg string, keyvals ...interface{}) {
-	lWithLevel := kitlevel.Error(d.logger)
-	kitlog.With(lWithLevel, msgKey, msg).Log(keyvals...)
+func (d *silentLogger) Error(msg string, keyvals ...interface{}) {
 }
