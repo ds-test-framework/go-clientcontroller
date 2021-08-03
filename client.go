@@ -225,7 +225,7 @@ func (c *ClientController) Start() error {
 	}
 	errCh := make(chan error, 1)
 	c.logger.Info("Starting client controller", "addr", c.listenAddr)
-	c.sendMasterMessage(&masterRequest{
+	err := c.sendMasterMessage(&masterRequest{
 		Type: "RegisterPeer",
 		Peer: &peer{
 			ID:    c.peerID,
@@ -234,6 +234,10 @@ func (c *ClientController) Start() error {
 			Ready: false,
 		},
 	})
+
+	if err != nil {
+		c.logger.Info("Failed to register replica", "err", err)
+	}
 
 	go func() {
 		if err := c.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -245,6 +249,7 @@ func (c *ClientController) Start() error {
 	select {
 	case e := <-errCh:
 		return e
+	// TODO: deal with this hack
 	case <-time.After(1 * time.Second):
 		c.startedLock.Lock()
 		c.started = true
