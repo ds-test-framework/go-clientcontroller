@@ -2,4 +2,4 @@ module github.com/ds-test-framework/go-clientcontroller
 
 go 1.16
 
-require github.com/go-kit/kit v0.10.0
+require github.com/ds-test-framework/scheduler v1.0.1

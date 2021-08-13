@@ -8,19 +8,25 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/ds-test-framework/scheduler/types"
 )
 
 var c *ClientController = nil
 
+type ReplicaID types.ReplicaID
+
+type Message types.Message
+
 // Init initialized the global controller
 func Init(
-	peer PeerID,
+	replicaID ReplicaID,
 	masterAddr, listenAddr, externAddr string,
-	peerInfo map[string]interface{},
+	replicaInfo map[string]interface{},
 	d DirectiveHandler,
 	logger Logger,
 ) {
-	c = NewClientController(peer, masterAddr, listenAddr, externAddr, peerInfo, d, logger)
+	c = NewClientController(replicaID, masterAddr, listenAddr, externAddr, replicaInfo, d, logger)
 }
 
 // GetController returns the global controller if initialized
@@ -31,34 +37,21 @@ func GetController() (*ClientController, error) {
 	return c, nil
 }
 
-// PeerID identifier for a given Peer
-type PeerID string
-
-// Message that is to be sent between the replicas
-type Message struct {
-	Type      string `json:"type"`
-	To        PeerID `json:"to"`
-	From      PeerID `json:"from"`
-	Msg       []byte `json:"msg"`
-	ID        string `json:"id"`
-	Intercept bool   `json:"intercept"`
-}
-
-// ClientController should be used as a transport to send messages between peers.
+// ClientController should be used as a transport to send messages between replicas.
 // It encapsulates the logic of sending the message to the `masternode` for further processing
 // The ClientController also listens for incoming messages from the master and directives to start, restart and stop
-// the current peer/replica.
+// the current replica.
 //
 // Additionally, the ClientController also exposes functions to manage timers. This is key to our testing method.
 // Timers are implemented as message sends and receives and again this is encapsulated from the library user
 type ClientController struct {
 	directiveHandler DirectiveHandler
-	peerID           PeerID
+	replicaID        ReplicaID
 
-	masterAddr string
-	listenAddr string
-	externAddr string
-	peerInfo   map[string]interface{}
+	masterAddr  string
+	listenAddr  string
+	externAddr  string
+	replicaInfo map[string]interface{}
 
 	server *http.Server
 
@@ -72,7 +65,7 @@ type ClientController struct {
 	intercepting     bool
 	interceptingLock *sync.Mutex
 
-	timer *timer
+	// timer *timer
 
 	ready       bool
 	readyLock   *sync.Mutex
@@ -85,9 +78,9 @@ type ClientController struct {
 // NewClientController creates a ClientController
 // It requires a DirectiveHandler which is used to perform directive actions such as start, stop and restart
 func NewClientController(
-	peerID PeerID,
+	replicaID ReplicaID,
 	masterAddr, listenAddr, externAddr string,
-	peerInfo map[string]interface{},
+	replicaInfo map[string]interface{},
 	directiveHandler DirectiveHandler,
 	logger Logger,
 ) *ClientController {
@@ -98,18 +91,18 @@ func NewClientController(
 		externAddr = listenAddr
 	}
 	c := &ClientController{
-		peerID:           peerID,
+		replicaID:        replicaID,
 		masterAddr:       masterAddr,
 		listenAddr:       listenAddr,
 		externAddr:       externAddr,
-		peerInfo:         peerInfo,
+		replicaInfo:      replicaInfo,
 		fromNode:         make(chan *Message, 10),
 		toNode:           make(chan *Message, 10),
 		resetting:        false,
 		resettingLock:    new(sync.Mutex),
 		stopCh:           make(chan bool),
 		directiveHandler: directiveHandler,
-		timer:            newTimer(),
+		// timer:            newTimer(),
 		intercepting:     true,
 		interceptingLock: new(sync.Mutex),
 		started:          false,
@@ -126,9 +119,9 @@ func NewClientController(
 	mux.HandleFunc("/directive",
 		wrapHandler(c.handleDirective, postRequest),
 	)
-	mux.HandleFunc("/timeout",
-		wrapHandler(c.handleTimeout, postRequest),
-	)
+	// mux.HandleFunc("/timeout",
+	// 	wrapHandler(c.handleTimeout, postRequest),
+	// )
 	mux.HandleFunc("/health", c.handleHealth)
 
 	c.server = &http.Server{
@@ -145,7 +138,7 @@ func (c *ClientController) Running() bool {
 	return c.started
 }
 
-// OutChan returns a channel which contains incoming messages for this replica/peer
+// OutChan returns a channel which contains incoming messages for this replica
 func (c *ClientController) OutChan() chan *Message {
 	return c.toNode
 }
@@ -157,10 +150,10 @@ func (c *ClientController) SetReady() {
 	c.readyLock.Unlock()
 
 	go c.sendMasterMessage(&masterRequest{
-		Type: "RegisterPeer",
-		Peer: &peer{
-			ID:    c.peerID,
-			Info:  c.peerInfo,
+		Type: "RegisterReplica",
+		Replica: &types.Replica{
+			ID:    types.ReplicaID(c.replicaID),
+			Info:  c.replicaInfo,
 			Addr:  c.externAddr,
 			Ready: true,
 		},
@@ -174,10 +167,10 @@ func (c *ClientController) UnsetReady() {
 	c.readyLock.Unlock()
 
 	go c.sendMasterMessage(&masterRequest{
-		Type: "RegisterPeer",
-		Peer: &peer{
-			ID:    c.peerID,
-			Info:  c.peerInfo,
+		Type: "RegisterReplica",
+		Replica: &types.Replica{
+			ID:    types.ReplicaID(c.replicaID),
+			Info:  c.replicaInfo,
 			Addr:  c.externAddr,
 			Ready: false,
 		},
@@ -194,7 +187,7 @@ func (c *ClientController) IsReady() bool {
 
 // SendMessage is to be used to send a message to another replica
 // and can be marked as to be intercepted or not by the testing framework
-func (c *ClientController) SendMessage(t string, to PeerID, msg []byte, intercept bool) error {
+func (c *ClientController) SendMessage(t string, to ReplicaID, msg []byte, intercept bool) error {
 
 	select {
 	case <-c.stopCh:
@@ -208,10 +201,10 @@ func (c *ClientController) SendMessage(t string, to PeerID, msg []byte, intercep
 
 	c.fromNode <- &Message{
 		Type:      t,
-		From:      c.peerID,
-		To:        to,
+		From:      types.ReplicaID(c.replicaID),
+		To:        types.ReplicaID(to),
 		ID:        "",
-		Msg:       msg,
+		Data:      msg,
 		Intercept: intercept,
 	}
 	return nil
@@ -226,10 +219,10 @@ func (c *ClientController) Start() error {
 	errCh := make(chan error, 1)
 	c.logger.Info("Starting client controller", "addr", c.listenAddr)
 	err := c.sendMasterMessage(&masterRequest{
-		Type: "RegisterPeer",
-		Peer: &peer{
-			ID:    c.peerID,
-			Info:  c.peerInfo,
+		Type: "RegisterReplica",
+		Replica: &types.Replica{
+			ID:    types.ReplicaID(c.replicaID),
+			Info:  c.replicaInfo,
 			Addr:  c.externAddr,
 			Ready: false,
 		},
@@ -292,20 +285,13 @@ func (c *ClientController) poll() {
 	}
 }
 
-type peer struct {
-	ID    PeerID                 `json:"id"`
-	Addr  string                 `json:"addr"`
-	Info  map[string]interface{} `json:"info,omitempty"`
-	Ready bool                   `json:"ready"`
-}
-
 type masterRequest struct {
-	Type    string   `json:"type"`
-	Peer    *peer    `json:"peer,omitempty"`
-	Message *Message `json:"message,omitempty"`
-	Timeout *timeout `json:"timeout,omitempty"`
-	Event   *event   `json:"event,omitempty"`
-	Log     *Log     `json:"log,omitempty"`
+	Type    string
+	Replica *types.Replica
+	Message *Message
+	// Timeout *timeout
+	Event *event
+	Log   *types.ReplicaLog
 }
 
 func (c *ClientController) sendMasterMessage(msg *masterRequest) error {
@@ -313,15 +299,15 @@ func (c *ClientController) sendMasterMessage(msg *masterRequest) error {
 	var route string
 	var err error
 	switch msg.Type {
-	case "RegisterPeer":
-		b, err = json.Marshal(msg.Peer)
+	case "RegisterReplica":
+		b, err = json.Marshal(msg.Replica)
 		route = "/replica"
 	case "InterceptedMessage":
 		b, err = json.Marshal(msg.Message)
 		route = "/message"
-	case "TimeoutMessage":
-		b, err = json.Marshal(msg.Timeout)
-		route = "/timeout"
+	// case "TimeoutMessage":
+	// 	b, err = json.Marshal(msg.Timeout)
+	// 	route = "/timeout"
 	case "StateUpdate":
 		b, err = json.Marshal(msg.Event)
 		route = "/state"
