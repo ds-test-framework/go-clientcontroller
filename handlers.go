@@ -27,6 +27,9 @@ func (c *ClientController) handleMessage(w http.ResponseWriter, r *http.Request)
 		fmt.Fprintf(w, "Not OK!")
 		return
 	}
+	c.PublishEventAsync(MessageReceiveEventType, map[string]string{
+		"message_id": req.ID,
+	})
 	c.toNode <- req
 	fmt.Fprintf(w, "Ok!")
 }

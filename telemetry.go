@@ -6,6 +6,11 @@ import (
 	"github.com/ds-test-framework/scheduler/types"
 )
 
+var (
+	MessageSendEventType    = "MessageSend"
+	MessageReceiveEventType = "MessageReceive"
+)
+
 type event struct {
 	Type      string            `json:"type"`
 	Replica   types.ReplicaID   `json:"replica"`

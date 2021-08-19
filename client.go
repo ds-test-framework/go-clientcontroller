@@ -72,7 +72,8 @@ type ClientController struct {
 	started     bool
 	startedLock *sync.Mutex
 
-	logger Logger
+	counter *Counter
+	logger  Logger
 }
 
 // NewClientController creates a ClientController
@@ -109,6 +110,7 @@ func NewClientController(
 		startedLock:      new(sync.Mutex),
 		ready:            false,
 		readyLock:        new(sync.Mutex),
+		counter:          NewCounter(),
 		logger:           logger,
 	}
 
@@ -198,15 +200,20 @@ func (c *ClientController) SendMessage(t string, to ReplicaID, msg []byte, inter
 	if !c.canIntercept() {
 		return nil
 	}
-
-	c.fromNode <- &Message{
+	from := types.ReplicaID(c.replicaID)
+	message := &Message{
 		Type:      t,
-		From:      types.ReplicaID(c.replicaID),
+		From:      from,
 		To:        types.ReplicaID(to),
-		ID:        "",
+		ID:        c.counter.NextID(from, types.ReplicaID(to)),
 		Data:      msg,
 		Intercept: intercept,
 	}
+
+	c.fromNode <- message
+	c.PublishEventAsync(MessageSendEventType, map[string]string{
+		"message_id": message.ID,
+	})
 	return nil
 }
 
