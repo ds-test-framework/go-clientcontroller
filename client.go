@@ -209,8 +209,10 @@ func (c *ClientController) SendMessage(t string, to ReplicaID, msg []byte, inter
 		Data:      msg,
 		Intercept: intercept,
 	}
-
-	c.fromNode <- message
+	c.sendMasterMessage(&masterRequest{
+		Type:    "InterceptedMessage",
+		Message: message,
+	})
 	c.PublishEventAsync(MessageSendEventType, map[string]string{
 		"message_id": message.ID,
 	})
@@ -298,7 +300,7 @@ type masterRequest struct {
 	Message *Message
 	// Timeout *timeout
 	Event *event
-	Log   *types.ReplicaLog
+	Log   *log
 }
 
 func (c *ClientController) sendMasterMessage(msg *masterRequest) error {
@@ -306,6 +308,9 @@ func (c *ClientController) sendMasterMessage(msg *masterRequest) error {
 	var route string
 	var err error
 	switch msg.Type {
+	case "Event":
+		b, err = json.Marshal(msg.Event)
+		route = "/event"
 	case "RegisterReplica":
 		b, err = json.Marshal(msg.Replica)
 		route = "/replica"

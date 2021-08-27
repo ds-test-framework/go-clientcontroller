@@ -32,19 +32,3 @@ func (c *ClientController) PublishEvent(t string, params map[string]string) {
 func (c *ClientController) PublishEventAsync(t string, params map[string]string) {
 	go c.PublishEvent(t, params)
 }
-
-func (c *ClientController) Log(params map[string]string, message string) {
-	c.sendMasterMessage(&masterRequest{
-		Type: "Log",
-		Log: &types.ReplicaLog{
-			Replica:   types.ReplicaID(c.replicaID),
-			Params:    params,
-			Message:   message,
-			Timestamp: time.Now().UTC().Unix(),
-		},
-	})
-}
-
-func (c *ClientController) LogAsync(params map[string]string, message string) {
-	go c.Log(params, message)
-}
