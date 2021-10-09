@@ -66,11 +66,14 @@ type ClientController struct {
 	interceptingLock *sync.Mutex
 
 	// timer *timer
-
 	ready       bool
 	readyLock   *sync.Mutex
 	started     bool
 	startedLock *sync.Mutex
+
+	// keep alive client
+	mLock        *sync.Mutex
+	masterClient *http.Client
 
 	counter *Counter
 	logger  Logger
@@ -112,6 +115,14 @@ func NewClientController(
 		readyLock:        new(sync.Mutex),
 		counter:          NewCounter(),
 		logger:           logger,
+
+		mLock: new(sync.Mutex),
+		masterClient: &http.Client{
+			Transport: &http.Transport{
+				MaxIdleConns:    10,
+				MaxConnsPerHost: 1,
+			},
+		},
 	}
 
 	mux := http.NewServeMux()
@@ -303,6 +314,12 @@ type masterRequest struct {
 	Log   *log
 }
 
+func (c *ClientController) getMasterClient() *http.Client {
+	c.mLock.Lock()
+	defer c.mLock.Unlock()
+	return c.masterClient
+}
+
 func (c *ClientController) sendMasterMessage(msg *masterRequest) error {
 	var b []byte
 	var route string
@@ -336,7 +353,7 @@ func (c *ClientController) sendMasterMessage(msg *masterRequest) error {
 		return err
 	}
 
-	client := &http.Client{}
+	client := c.getMasterClient()
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
