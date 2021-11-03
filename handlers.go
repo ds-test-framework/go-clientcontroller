@@ -92,7 +92,7 @@ func (c *ClientController) handleTimeout(w http.ResponseWriter, r *http.Request)
 		fmt.Fprintf(w, "Not OK!")
 		return
 	}
-
+	c.logger.Info("Ending timeout", "type", t.Type, "duration", t.Duration)
 	c.timer.FireTimeout(t.Type)
 	c.PublishEventAsync(TimeoutEndEventType, map[string]string{
 		"type":     t.Type,
