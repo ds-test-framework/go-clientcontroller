@@ -65,7 +65,7 @@ type ClientController struct {
 	intercepting     bool
 	interceptingLock *sync.Mutex
 
-	// timer *timer
+	timer       *timer
 	ready       bool
 	readyLock   *sync.Mutex
 	started     bool
@@ -106,7 +106,7 @@ func NewClientController(
 		resettingLock:    new(sync.Mutex),
 		stopCh:           make(chan bool),
 		directiveHandler: directiveHandler,
-		// timer:            newTimer(),
+		timer:            newTimer(),
 		intercepting:     true,
 		interceptingLock: new(sync.Mutex),
 		started:          false,
@@ -132,9 +132,9 @@ func NewClientController(
 	mux.HandleFunc("/directive",
 		wrapHandler(c.handleDirective, postRequest),
 	)
-	// mux.HandleFunc("/timeout",
-	// 	wrapHandler(c.handleTimeout, postRequest),
-	// )
+	mux.HandleFunc("/timeout",
+		wrapHandler(c.handleTimeout, postRequest),
+	)
 	mux.HandleFunc("/health", c.handleHealth)
 
 	c.server = &http.Server{

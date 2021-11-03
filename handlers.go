@@ -76,26 +76,30 @@ func (c *ClientController) handleDirective(w http.ResponseWriter, r *http.Reques
 	fmt.Fprintf(w, "Ok")
 }
 
-// func (c *ClientController) handleTimeout(w http.ResponseWriter, r *http.Request) {
-// 	bodyB, err := ioutil.ReadAll(r.Body)
-// 	if err != nil {
-// 		w.WriteHeader(http.StatusBadRequest)
-// 		fmt.Fprintf(w, "Not OK!")
-// 		return
-// 	}
-// 	defer r.Body.Close()
+func (c *ClientController) handleTimeout(w http.ResponseWriter, r *http.Request) {
+	bodyB, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Not OK!")
+		return
+	}
+	defer r.Body.Close()
 
-// 	t := &timeout{}
-// 	err = json.Unmarshal(bodyB, t)
-// 	if err != nil {
-// 		w.WriteHeader(http.StatusBadRequest)
-// 		fmt.Fprintf(w, "Not OK!")
-// 		return
-// 	}
+	t := &timeout{}
+	err = json.Unmarshal(bodyB, t)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Not OK!")
+		return
+	}
 
-// 	c.timer.FireTimeout(t.Type)
-// 	fmt.Fprintf(w, "Ok")
-// }
+	c.timer.FireTimeout(t.Type)
+	c.PublishEventAsync(TimeoutEndEventType, map[string]string{
+		"type":     t.Type,
+		"duration": t.Duration,
+	})
+	fmt.Fprintf(w, "Ok")
+}
 
 type httpHandler func(http.ResponseWriter, *http.Request)
 

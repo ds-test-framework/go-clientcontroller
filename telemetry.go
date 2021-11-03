@@ -9,6 +9,8 @@ import (
 var (
 	MessageSendEventType    = "MessageSend"
 	MessageReceiveEventType = "MessageReceive"
+	TimeoutStartEventType   = "TimeoutStart"
+	TimeoutEndEventType     = "TimeoutEnd"
 )
 
 type event struct {
