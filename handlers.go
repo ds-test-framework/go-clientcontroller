@@ -6,13 +6,15 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+
+	"github.com/ds-test-framework/scheduler/types"
 )
 
-func (c *ClientController) handleHealth(w http.ResponseWriter, _ *http.Request) {
+func (c *ReplicaClient) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	fmt.Fprintf(w, "Ok!")
 }
 
-func (c *ClientController) handleMessage(w http.ResponseWriter, r *http.Request) {
+func (c *ReplicaClient) handleMessage(w http.ResponseWriter, r *http.Request) {
 	bodyB, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -20,21 +22,21 @@ func (c *ClientController) handleMessage(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	defer r.Body.Close()
-	req := &Message{}
-	err = json.Unmarshal(bodyB, req)
+	message := &types.Message{}
+	err = json.Unmarshal(bodyB, message)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, "Not OK!")
 		return
 	}
 	c.PublishEventAsync(MessageReceiveEventType, map[string]string{
-		"message_id": req.ID,
+		"message_id": message.ID,
 	})
-	c.toNode <- req
+	c.messageQ.Add(message)
 	fmt.Fprintf(w, "Ok!")
 }
 
-func (c *ClientController) handleDirective(w http.ResponseWriter, r *http.Request) {
+func (c *ReplicaClient) handleDirective(w http.ResponseWriter, r *http.Request) {
 	bodyB, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -52,15 +54,15 @@ func (c *ClientController) handleDirective(w http.ResponseWriter, r *http.Reques
 	c.logger.Info("Received directive", "directive", req.Action)
 	switch req.Action {
 	case startAction:
-		c.resume()
+		c.Ready()
 		err = c.directiveHandler.Start()
 	case stopAction:
-		c.pause()
+		c.unsetReady()
 		err = c.directiveHandler.Stop()
 	case restartAction:
-		c.pause()
+		c.unsetReady()
 		err = c.directiveHandler.Restart()
-		c.resume()
+		c.Ready()
 	case isReadyAction:
 		if !c.IsReady() {
 			err = errors.New("replica not ready")
@@ -76,7 +78,7 @@ func (c *ClientController) handleDirective(w http.ResponseWriter, r *http.Reques
 	fmt.Fprintf(w, "Ok")
 }
 
-func (c *ClientController) handleTimeout(w http.ResponseWriter, r *http.Request) {
+func (c *ReplicaClient) handleTimeout(w http.ResponseWriter, r *http.Request) {
 	bodyB, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)

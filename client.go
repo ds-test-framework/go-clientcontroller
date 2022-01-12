@@ -1,9 +1,7 @@
 package clientcontroller
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"sync"
@@ -12,103 +10,106 @@ import (
 	"github.com/ds-test-framework/scheduler/types"
 )
 
-var c *ClientController = nil
+var client *ReplicaClient = nil
 
-type ReplicaID types.ReplicaID
+var (
+	ErrNoReplicaID        = errors.New("replica ID config should not be empty")
+	ErrNoClientServerAddr = errors.New("client server address should not be empty")
+	ErrNoImperiumAddr     = errors.New("imperium addr should not be empty")
+)
 
-type Message types.Message
+type Config struct {
+	ReplicaID        types.ReplicaID
+	ImperiumAddr     string
+	ClientServerAddr string
+	ClientAdvAddr    string
+	Info             map[string]interface{}
+}
 
-// Init initialized the global controller
+func validateConfig(c *Config) error {
+	if c.ReplicaID == "" {
+		return ErrNoReplicaID
+	}
+	if c.ImperiumAddr == "" {
+		return ErrNoImperiumAddr
+	}
+	if c.ClientServerAddr == "" {
+		return ErrNoClientServerAddr
+	}
+	if c.ClientAdvAddr == "" {
+		c.ClientAdvAddr = c.ClientServerAddr
+	}
+	return nil
+}
+
+// Init initializes the global controller
 func Init(
-	replicaID ReplicaID,
-	masterAddr, listenAddr, externAddr string,
-	replicaInfo map[string]interface{},
+	config *Config,
 	d DirectiveHandler,
 	logger Logger,
-) {
-	c = NewClientController(replicaID, masterAddr, listenAddr, externAddr, replicaInfo, d, logger)
+) error {
+	c, err := NewReplicaClient(config, d, logger)
+	if err != nil {
+		return err
+	}
+	client = c
+	return nil
 }
 
 // GetController returns the global controller if initialized
-func GetController() (*ClientController, error) {
-	if c == nil {
+func GetClient() (*ReplicaClient, error) {
+	if client == nil {
 		return nil, errors.New("controller not initialized")
 	}
-	return c, nil
+	return client, nil
 }
 
-// ClientController should be used as a transport to send messages between replicas.
+// ReplicaClient should be used as a transport to send messages between replicas.
 // It encapsulates the logic of sending the message to the `masternode` for further processing
-// The ClientController also listens for incoming messages from the master and directives to start, restart and stop
+// The ReplicaClient also listens for incoming messages from the master and directives to start, restart and stop
 // the current replica.
 //
-// Additionally, the ClientController also exposes functions to manage timers. This is key to our testing method.
+// Additionally, the ReplicaClient also exposes functions to manage timers. This is key to our testing method.
 // Timers are implemented as message sends and receives and again this is encapsulated from the library user
-type ClientController struct {
+type ReplicaClient struct {
 	directiveHandler DirectiveHandler
-	replicaID        ReplicaID
+	config           *Config
+	messageQ         *MessageQueue
 
-	masterAddr  string
-	listenAddr  string
-	externAddr  string
-	replicaInfo map[string]interface{}
-
-	server *http.Server
-
-	fromNode chan *Message
-	toNode   chan *Message
-
-	resetting     bool
-	resettingLock *sync.Mutex
-	stopCh        chan bool
-
-	intercepting     bool
-	interceptingLock *sync.Mutex
-
-	timer       *timer
-	ready       bool
-	readyLock   *sync.Mutex
 	started     bool
 	startedLock *sync.Mutex
+	stopCh      chan bool
 
-	// keep alive client
-	mLock        *sync.Mutex
+	timer     *timer
+	ready     bool
+	readyLock *sync.Mutex
+
 	masterClient *http.Client
+	server       *http.Server
 
 	counter *Counter
 	logger  Logger
 }
 
-// NewClientController creates a ClientController
+// NewReplicaClient creates a ClientController
 // It requires a DirectiveHandler which is used to perform directive actions such as start, stop and restart
-func NewClientController(
-	replicaID ReplicaID,
-	masterAddr, listenAddr, externAddr string,
-	replicaInfo map[string]interface{},
+func NewReplicaClient(
+	config *Config,
 	directiveHandler DirectiveHandler,
 	logger Logger,
-) *ClientController {
+) (*ReplicaClient, error) {
 	if logger == nil {
 		logger = newDefaultLogger()
 	}
-	if externAddr == "" {
-		externAddr = listenAddr
+	if err := validateConfig(config); err != nil {
+		return nil, err
 	}
-	c := &ClientController{
-		replicaID:        replicaID,
-		masterAddr:       masterAddr,
-		listenAddr:       listenAddr,
-		externAddr:       externAddr,
-		replicaInfo:      replicaInfo,
-		fromNode:         make(chan *Message, 10),
-		toNode:           make(chan *Message, 10),
-		resetting:        false,
-		resettingLock:    new(sync.Mutex),
+	c := &ReplicaClient{
+		config:           config,
+		messageQ:         NewMessageQueue(),
 		stopCh:           make(chan bool),
 		directiveHandler: directiveHandler,
 		timer:            newTimer(),
-		intercepting:     true,
-		interceptingLock: new(sync.Mutex),
 		started:          false,
 		startedLock:      new(sync.Mutex),
 		ready:            false,
@@ -116,7 +117,6 @@ func NewClientController(
 		counter:          NewCounter(),
 		logger:           logger,
 
-		mLock: new(sync.Mutex),
 		masterClient: &http.Client{
 			Transport: &http.Transport{
 				MaxIdleConns:    10,
@@ -138,26 +138,21 @@ func NewClientController(
 	mux.HandleFunc("/health", c.handleHealth)
 
 	c.server = &http.Server{
-		Addr:    listenAddr,
+		Addr:    config.ClientServerAddr,
 		Handler: mux,
 	}
-	return c
+	return c, nil
 }
 
 // Running returns true if the clientcontroller is running
-func (c *ClientController) Running() bool {
+func (c *ReplicaClient) IsRunning() bool {
 	c.startedLock.Lock()
 	defer c.startedLock.Unlock()
 	return c.started
 }
 
-// OutChan returns a channel which contains incoming messages for this replica
-func (c *ClientController) OutChan() chan *Message {
-	return c.toNode
-}
-
 // SetReady sets the state of the replica to ready for testing
-func (c *ClientController) SetReady() {
+func (c *ReplicaClient) Ready() {
 	c.readyLock.Lock()
 	c.ready = true
 	c.readyLock.Unlock()
@@ -165,16 +160,16 @@ func (c *ClientController) SetReady() {
 	go c.sendMasterMessage(&masterRequest{
 		Type: "RegisterReplica",
 		Replica: &types.Replica{
-			ID:    types.ReplicaID(c.replicaID),
-			Info:  c.replicaInfo,
-			Addr:  c.externAddr,
+			ID:    types.ReplicaID(c.config.ReplicaID),
+			Info:  c.config.Info,
+			Addr:  c.config.ClientAdvAddr,
 			Ready: true,
 		},
 	})
 }
 
 // UnsetReady sets the state of the replica to not ready for testing
-func (c *ClientController) UnsetReady() {
+func (c *ReplicaClient) NotReady() {
 	c.readyLock.Lock()
 	c.ready = false
 	c.readyLock.Unlock()
@@ -182,68 +177,36 @@ func (c *ClientController) UnsetReady() {
 	go c.sendMasterMessage(&masterRequest{
 		Type: "RegisterReplica",
 		Replica: &types.Replica{
-			ID:    types.ReplicaID(c.replicaID),
-			Info:  c.replicaInfo,
-			Addr:  c.externAddr,
+			ID:    types.ReplicaID(c.config.ReplicaID),
+			Info:  c.config.Info,
+			Addr:  c.config.ClientAdvAddr,
 			Ready: false,
 		},
 	})
 }
 
 // IsReady returns true if the state is set to ready
-func (c *ClientController) IsReady() bool {
+func (c *ReplicaClient) IsReady() bool {
 	c.readyLock.Lock()
 	defer c.readyLock.Unlock()
 
 	return c.ready
 }
 
-// SendMessage is to be used to send a message to another replica
-// and can be marked as to be intercepted or not by the testing framework
-func (c *ClientController) SendMessage(t string, to ReplicaID, msg []byte, intercept bool) error {
-
-	select {
-	case <-c.stopCh:
-		return errors.New("controller stopped. EOF")
-	default:
-	}
-
-	if !c.canIntercept() {
-		return nil
-	}
-	from := types.ReplicaID(c.replicaID)
-	message := &Message{
-		Type:      t,
-		From:      from,
-		To:        types.ReplicaID(to),
-		ID:        c.counter.NextID(from, types.ReplicaID(to)),
-		Data:      msg,
-		Intercept: intercept,
-	}
-	c.sendMasterMessage(&masterRequest{
-		Type:    "InterceptedMessage",
-		Message: message,
-	})
-	c.PublishEventAsync(MessageSendEventType, map[string]string{
-		"message_id": message.ID,
-	})
-	return nil
-}
-
 // Start will start the ClientController by spawning the polling goroutines and the server
 // Start should be called before SetReady/UnsetReady
-func (c *ClientController) Start() error {
-	if c.Running() {
+func (c *ReplicaClient) Start() error {
+	if c.IsRunning() {
 		return nil
 	}
 	errCh := make(chan error, 1)
-	c.logger.Info("Starting client controller", "addr", c.listenAddr)
+	c.logger.Info("Starting client controller", "addr", c.config.ClientServerAddr)
 	err := c.sendMasterMessage(&masterRequest{
 		Type: "RegisterReplica",
 		Replica: &types.Replica{
-			ID:    types.ReplicaID(c.replicaID),
-			Info:  c.replicaInfo,
-			Addr:  c.externAddr,
+			ID:    c.config.ReplicaID,
+			Info:  c.config.Info,
+			Addr:  c.config.ClientAdvAddr,
 			Ready: false,
 		},
 	})
@@ -257,7 +220,6 @@ func (c *ClientController) Start() error {
 			errCh <- err
 		}
 	}()
-	go c.poll()
 
 	select {
 	case e := <-errCh:
@@ -272,8 +234,8 @@ func (c *ClientController) Start() error {
 }
 
 // Stop will halt the clientcontroller and gracefully exit
-func (c *ClientController) Stop() error {
-	if !c.Running() {
+func (c *ReplicaClient) Stop() error {
+	if !c.IsRunning() {
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -291,96 +253,8 @@ func (c *ClientController) Stop() error {
 	return nil
 }
 
-func (c *ClientController) poll() {
-	for {
-		select {
-		case msg := <-c.fromNode:
-			go c.sendMasterMessage(&masterRequest{
-				Type:    "InterceptedMessage",
-				Message: msg,
-			})
-		case <-c.stopCh:
-			return
-		}
-	}
-}
-
-type masterRequest struct {
-	Type    string
-	Replica *types.Replica
-	Message *Message
-	// Timeout *timeout
-	Event *event
-	Log   *log
-}
-
-func (c *ClientController) getMasterClient() *http.Client {
-	c.mLock.Lock()
-	defer c.mLock.Unlock()
-	return c.masterClient
-}
-
-func (c *ClientController) sendMasterMessage(msg *masterRequest) error {
-	var b []byte
-	var route string
-	var err error
-	switch msg.Type {
-	case "Event":
-		b, err = json.Marshal(msg.Event)
-		route = "/event"
-	case "RegisterReplica":
-		b, err = json.Marshal(msg.Replica)
-		route = "/replica"
-	case "InterceptedMessage":
-		b, err = json.Marshal(msg.Message)
-		route = "/message"
-	// case "TimeoutMessage":
-	// 	b, err = json.Marshal(msg.Timeout)
-	// 	route = "/timeout"
-	case "StateUpdate":
-		b, err = json.Marshal(msg.Event)
-		route = "/state"
-	case "Log":
-		b, err = json.Marshal(msg.Log)
-		route = "/log"
-	}
-	if err != nil {
-		return err
-	}
-
-	req, err := http.NewRequest(http.MethodPost, "http://"+c.masterAddr+route, bytes.NewBuffer(b))
-	if err != nil {
-		return err
-	}
-
-	client := c.getMasterClient()
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return errors.New("response was not ok	")
-	}
-	return nil
-}
-
-func (c *ClientController) pause() {
-	c.interceptingLock.Lock()
-	c.intercepting = false
-	c.interceptingLock.Unlock()
-}
-
-func (c *ClientController) resume() {
-	c.interceptingLock.Lock()
-	c.intercepting = true
-	c.interceptingLock.Unlock()
-}
-
-func (c *ClientController) canIntercept() bool {
-	c.interceptingLock.Lock()
-	defer c.interceptingLock.Unlock()
-
-	return c.intercepting
+func (c *ReplicaClient) unsetReady() {
+	c.readyLock.Lock()
+	defer c.readyLock.Unlock()
+	c.ready = false
 }

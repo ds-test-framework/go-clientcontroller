@@ -57,7 +57,7 @@ func (t *timer) FireTimeout(key string) {
 // StartTimer schedules a timer for the given TimerInfo
 // Note: The timers are implemented as message sends and receives that are to be scheduled by the
 // testing strategy. If you do not want to instrument timers as message send/receives then do not use this function.
-func (c *ClientController) StartTimer(i TimeoutInfo) {
+func (c *ReplicaClient) StartTimer(i TimeoutInfo) {
 	c.logger.Info("Starting timer", "type", i.Key(), "duration", i.Duration().String())
 	c.timer.AddTimeout(i)
 	c.PublishEvent(TimeoutStartEventType, map[string]string{
@@ -67,6 +67,6 @@ func (c *ClientController) StartTimer(i TimeoutInfo) {
 }
 
 // TimeoutChan returns the channel on which timeouts are delivered.
-func (c *ClientController) TimeoutChan() chan TimeoutInfo {
+func (c *ReplicaClient) TimeoutChan() chan TimeoutInfo {
 	return c.timer.outChan
 }

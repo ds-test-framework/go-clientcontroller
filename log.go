@@ -1,6 +1,10 @@
 package clientcontroller
 
-import "time"
+import (
+	"time"
+
+	"github.com/ds-test-framework/scheduler/types"
+)
 
 var (
 	msgKey = "_msg"
@@ -28,17 +32,17 @@ func (d *silentLogger) Error(msg string, keyvals ...interface{}) {
 }
 
 type log struct {
-	Replica   ReplicaID              `json:"replica"`
+	Replica   types.ReplicaID        `json:"replica"`
 	Message   string                 `json:"message"`
 	Params    map[string]interface{} `json:"params"`
 	Timestamp int64                  `json:"timestamp"`
 }
 
-func (c *ClientController) Log(params map[string]interface{}, message string) {
+func (c *ReplicaClient) Log(params map[string]interface{}, message string) {
 	c.sendMasterMessage(&masterRequest{
 		Type: "Log",
 		Log: &log{
-			Replica:   c.replicaID,
+			Replica:   c.config.ReplicaID,
 			Params:    params,
 			Message:   message,
 			Timestamp: time.Now().UTC().Unix(),
@@ -46,6 +50,6 @@ func (c *ClientController) Log(params map[string]interface{}, message string) {
 	})
 }
 
-func (c *ClientController) LogAsync(params map[string]interface{}, message string) {
+func (c *ReplicaClient) LogAsync(params map[string]interface{}, message string) {
 	go c.Log(params, message)
 }
